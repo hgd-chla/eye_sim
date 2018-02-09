@@ -11,6 +11,8 @@ To-do:
       -Pull redundant lines out into subroutines
       -Implement a more efficient means of comparing particle positions  
       -Set max velocities
+Bugs:
+      -theta and phi runaway 
 */
 /* ************************* */
 
@@ -34,6 +36,7 @@ To-do:
 #include <math.h> //required to use 'M_PI'
 #include <stdlib.h> //required to use 'rand()'
 #include <time.h> //required to use 'srand(time(NULL))'
+#include <string.h>
 
 //Subroutines
 
@@ -71,140 +74,82 @@ float elastic_collsion_vel_2(float mass_1, float mass_2, float vel_a, float vel_
 }
 /* ************************* */
 //Gradient Finder Tools
-//Derivative
-float derivative(float pos_0, float pos_1, float pos_2, float vel_0, float vel_1, float vel_2)
+//Derivative: dv/vx = (1/v)*dv/dt
+float derivative(float t_0, float t_1, float t_2, float vel_0, float vel_1, float vel_2)
 {
-  float temp_1 = (vel_1 - vel_0)/(pos_1 - pos_0) ;
-  float temp_2 = (vel_2 - vel_1)/(pos_2 - pos_1);
+  float del_v_1 = vel_1 - vel_0;
+  float del_t_1 = t_1 - t_0;
+  float temp_1 = del_v_1/del_t_1;
+  
+  float del_v_2 = vel_2 - vel_1;
+  float del_t_2 = t_2 - t_1;
+  float temp_2 = del_v_2/del_t_2;
+  
   float derivative = 0.5*(temp_1 + temp_2);
+  if( vel_1 == 0.0000 ){ derivative = derivative/0.0000001; } else { derivative = derivative/vel_1; }
   return derivative; 
 }
 
 //Main routine
 int main () {
-
-  //Initializing rand() and setting maximums for rand()
+  
+  //*************************
+  //Initializing rand()
+  //*************************
   srand(time(NULL));
 
-  //Set max values
+  //*************************
+  //Set max values for rand()
+  //*************************
   float mass_max = 7.5; // mg; one-thousandth of average adult human eye mass (7.5 g)
   float radius_max = 12; // average adult human eye diameter 12 mm 
   float theta_max = 2*M_PI; // 2*pi radians
   float phi_max = M_PI; // pi radians
   
-  //Declaring mass and velocity arrays
+  //*************************
+  //Declare arrays 
+  //*************************
   float masses[particle_num]; 
   
   float pos_radius_t[particle_num][t_max*n_t];
   float pos_theta_t[particle_num][t_max*n_t];
   float pos_phi_t[particle_num][t_max*n_t];
   
-
   float vel_radius_t[particle_num][t_max*n_t];
   float vel_theta_t[particle_num][t_max*n_t];
   float vel_phi_t[particle_num][t_max*n_t];
 
-  //Setting initial values for all properties
-  for(int i=0; i < particle_num; i++)
-  {
-    //Set masses for all particles
-    float mass_temp = rand()%mass_rand_max; //rand() only works with ints
-    mass_temp = mass_temp/mass_rand_max; //Gets non-integer values
-    masses[i] = 0.0001*mass_temp; //Scales correctly (mg)
-    
-    //Set initial radial positions for all particles
-    pos_radius_t[i][0] = rand()%rad_rand_max; //(mm)
-
-    //Set initial angular positions for all particles
-    float ang_temp = rand()%theta_rand_max; //rand() only works with ints
-    ang_temp = ang_temp/theta_rand_max; //Gets non-integer values
-    pos_theta_t[i][0] = 2*M_PI*ang_temp; //Scales correctly (radians)
-    
-    ang_temp = rand()%phi_rand_max; //rand() only works with ints
-    ang_temp = ang_temp/phi_rand_max; //Gets non-integer values
-    pos_phi_t[i][0] = M_PI*ang_temp; //Scales correctly (radians)
-
-    //Set initial radial and angular velocities for all particles; multiplying by 0.001 keeps steps small
-    float vel_temp = rand()%vel_r_rand_max; //rand() only works with ints
-    vel_temp = vel_temp/vel_r_rand_max; //Gets non-integer values
-    vel_radius_t[i][0] = 0.001*vel_temp; //Units: mm/s
-
-    vel_temp = rand()%vel_t_rand_max; //rand() only works with ints
-    vel_temp = vel_temp/vel_t_rand_max; //Gets non-integer values
-    vel_theta_t[i][0] = 0.001*M_PI*vel_temp; //Scales correctly (radians/s)
-
-    vel_temp = rand()%vel_p_rand_max; //rand() only works with ints
-    vel_temp = vel_temp/vel_p_rand_max; //Gets non-integer values
-    vel_phi_t[i][0] = 0.001*M_PI*vel_temp; //Scales correctly (radians/s) 
-  }
-
-  //Let's find the velocity gradient as a function of time
-  for(int t=1; t < t_max*n_t; t++)
+  //*************************
+  //Randomly fill velocities and positions
+  //*************************
+  for(int t=0; t < t_max*n_t; t++)
   {
     for(int i=0; i < particle_num; i++)
     {
-      //*************************
-      //Evolves particle positions
-      //and velocities
-      //************************* 
-      float beta = b_drag/masses[i];
-      float t_step = delta_t*t;
+      //Set initial radial positions for all particles
+      pos_radius_t[i][t] = rand()%rad_rand_max; //(mm)
+
+      //Set initial angular positions for all particles
+      float ang_temp = rand()%theta_rand_max; //rand() only works with ints
+      ang_temp = ang_temp/theta_rand_max; //Gets non-integer values
+      pos_theta_t[i][t] = 2*M_PI*ang_temp; //Scales correctly (radians)
     
-      pos_radius_t[i][t] = pos_radius_t[i][t-1] + vel_radius_t[i][t-1]*t_step - 0.5*beta*vel_radius_t[i][t-1]*t_step*t_step; //Approx. a_drag = -(b/m)*v
-      vel_radius_t[i][t] = vel_radius_t[i][t-1] - beta*vel_radius_t[i][t-1]*t_step;
-      //Keeps particle within sphere
-      if (fabsf(pos_radius_t[i][t]) >= radius_max) { pos_radius_t[i][t] = pos_radius_t[i][t] - radius_max; vel_radius_t[i][t] = -1*vel_radius_t[i][t]; }
-      
-      pos_theta_t[i][t] = pos_theta_t[i][t-1] + vel_theta_t[i][t-1]*t_step - 0.5*beta*vel_theta_t[i][t-1]*t_step*t_step; //Approx. a_drag = -(b/m)*v
-      vel_theta_t[i][t] = vel_theta_t[i][t-1] - beta*vel_theta_t[i][t-1]*t_step;
-      //Maintain 2*pi periodicity 
-      if (pos_theta_t[i][t] > theta_max) { pos_theta_t[i][t] = pos_theta_t[i][t] - theta_max; }
-      
-      pos_phi_t[i][t] = pos_phi_t[i][t-1] + vel_phi_t[i][t-1]*t_step - 0.5*beta*vel_phi_t[i][t-1]*t_step*t_step; //Approx. a_drag = -(b/m)*v
-      vel_phi_t[i][t] = vel_phi_t[i][t-1] - beta*vel_phi_t[i][t-1]*t_step;
-      //Maintain pi periodicity 
-      if (pos_phi_t[i][t] > phi_max) { pos_phi_t[i][t] = -1*(2*M_PI - pos_phi_t[i][t]); pos_theta_t[i][t] = pos_theta_t[i][t] + M_PI; }
-    }
-    
-    //*************************
-    //Check for any collisions
-    //*************************
-    int a, b;
-    for(a=0; a < particle_num; a++)
-    {
-      for(b=a; b < particle_num; b++)
-      {
-	if (a != b)
-	{
-	  if ( (pos_radius_t[a][t] == pos_radius_t[b][t]) && (pos_theta_t[a][t] == pos_theta_t[b][t]) && (pos_phi_t[a][t] == pos_phi_t[b][t]) )
-	  {
-	    //Transform to center of momentum frame, so p = 0
-	    float V_rad_cm = vel_CM(masses[a], masses[b], vel_radius_t[a][t], vel_radius_t[b][t]);
-	    float vel_rad_a_cm = vel_radius_t[a][t] - V_rad_cm; float vel_rad_b_cm = vel_radius_t[b][t] - V_rad_cm;
-	    
-	    float V_theta_cm = vel_CM(masses[a], masses[b], vel_theta_t[a][t], vel_theta_t[b][t]);
-	    float vel_theta_a_cm = vel_theta_t[a][t] - V_theta_cm; float vel_theta_b_cm = vel_theta_t[b][t] - V_theta_cm; 
-	    
-	    float V_phi_cm = vel_CM(masses[a], masses[b], vel_phi_t[a][t], vel_phi_t[b][t]);
-	    float vel_phi_a_cm = vel_phi_t[a][t] - V_phi_cm; float vel_phi_b_cm = vel_phi_t[b][t] - V_phi_cm;
-	    
-	    //Set initial kinetic energies	   
-	    float KE_radius = kinetic_energy(masses[a], masses[b], vel_rad_a_cm, vel_rad_b_cm);
-	    float KE_theta = kinetic_energy(masses[a], masses[b], vel_theta_a_cm, vel_theta_b_cm);
-	    float KE_phi = kinetic_energy(masses[a], masses[b], vel_phi_a_cm, vel_phi_b_cm);
-	    
-	    //Perfectly elastic collision: solve kinetic energy conservation and momentum conservation to get velocities of particles
-	    vel_radius_t[a][t] = elastic_collsion_vel_1(masses[a], masses[b], vel_radius_t[a][t], V_rad_cm, KE_radius);
-	    vel_radius_t[b][t] = elastic_collsion_vel_2(masses[a], masses[b], vel_radius_t[a][t], vel_radius_t[b][t], V_rad_cm);
-	    
-	    vel_theta_t[a][t] = elastic_collsion_vel_1(masses[a], masses[b], vel_theta_t[a][t], V_theta_cm, KE_theta);
-	    vel_theta_t[b][t] = elastic_collsion_vel_2(masses[a], masses[b], vel_theta_t[a][t], vel_theta_t[b][t], V_theta_cm);
-	    
-	    vel_phi_t[a][t] = elastic_collsion_vel_1(masses[a], masses[b], vel_phi_t[a][t], V_phi_cm, KE_phi);
-	    vel_phi_t[b][t] = elastic_collsion_vel_2(masses[a], masses[b], vel_phi_t[a][t], vel_phi_t[b][t], V_phi_cm);
-	  }
-	}
-      }
+      ang_temp = rand()%phi_rand_max; //rand() only works with ints
+      ang_temp = ang_temp/phi_rand_max; //Gets non-integer values
+      pos_phi_t[i][t] = M_PI*ang_temp; //Scales correctly (radians)
+
+      //Set initial radial and angular velocities for all particles; multiplying by 0.001 keeps steps small
+      float vel_temp = rand()%vel_r_rand_max; //rand() only works with ints
+      vel_temp = vel_temp/vel_r_rand_max; //Gets non-integer values
+      vel_radius_t[i][t] = 0.001*vel_temp; //Units: mm/s
+
+      vel_temp = rand()%vel_t_rand_max; //rand() only works with ints
+      vel_temp = vel_temp/vel_t_rand_max; //Gets non-integer values
+      vel_theta_t[i][t] = 0.001*M_PI*vel_temp; //Scales correctly (radians/s)
+
+      vel_temp = rand()%vel_p_rand_max; //rand() only works with ints
+      vel_temp = vel_temp/vel_p_rand_max; //Gets non-integer values
+      vel_phi_t[i][t] = 0.001*M_PI*vel_temp; //Scales correctly (radians/s) 
     }
   }
 
@@ -221,46 +166,115 @@ int main () {
   {
     for(int i=0; i < particle_num; i++)
     {
-      grad_v_radius_t[i][t] = derivative(pos_radius_t[i][t-1], pos_radius_t[i][t], pos_radius_t[i][t+1], vel_radius_t[i][t-1], vel_radius_t[i][t], vel_radius_t[i][t+1]);
-      grad_v_theta_t[i][t] = derivative(pos_theta_t[i][t-1], pos_theta_t[i][t], pos_theta_t[i][t+1], vel_theta_t[i][t-1], vel_theta_t[i][t], vel_theta_t[i][t+1])/(pos_radius_t[i][t]*sin(pos_phi_t[i][t]));
-      grad_v_phi_t[i][t] = derivative(pos_phi_t[i][t-1], pos_phi_t[i][t], pos_phi_t[i][t+1], vel_phi_t[i][t-1], vel_phi_t[i][t], vel_phi_t[i][t+1])/pos_radius_t[i][t];
+      float temp = derivative(delta_t*(t-1), delta_t*t, delta_t*(t+1), vel_radius_t[i][t-1], vel_radius_t[i][t], vel_radius_t[i][t+1]);
+      grad_v_radius_t[i][t] = temp;
+      
+      temp = derivative(delta_t*(t-1), delta_t*t, delta_t*(t+1), vel_theta_t[i][t-1], vel_theta_t[i][t], vel_theta_t[i][t+1]);
+      if ( (pos_radius_t[i][t]*sin(pos_phi_t[i][t])) == 0.0000 ) { grad_v_theta_t[i][t] = temp/0.0000001;} else { grad_v_theta_t[i][t] = temp/(pos_radius_t[i][t]*sin(pos_phi_t[i][t])) ;}
+
+      temp = derivative(delta_t*(t-1), delta_t*t, delta_t*(t+1), vel_phi_t[i][t-1], vel_phi_t[i][t], vel_phi_t[i][t+1]);
+      if (pos_radius_t[i][t] == 0.0000) { grad_v_phi_t[i][t] = temp/0.0000001; } else { grad_v_phi_t[i][t] = temp/pos_radius_t[i][t]; }
     }
   }
 
+  //Set velocity gradient at initial and final time steps
   for(int i=0; i < particle_num; i++)
   {
-    float temp = (vel_radius_t[i][1] - vel_radius_t[i][0])/(pos_radius_t[i][1] - pos_radius_t[i][0]); 
+    float temp = (vel_radius_t[i][1] - vel_radius_t[i][0])/delta_t;
+    if(vel_radius_t[i][0] == 0.0000){ temp = temp/0.0000001; } else { temp = temp/vel_radius_t[i][0]; }
     grad_v_radius_t[i][0] = temp;
     
-    temp = (vel_theta_t[i][1] - vel_theta_t[i][0])/(pos_theta_t[i][1] - pos_theta_t[i][0]);
-    grad_v_theta_t[i][0] = temp/(pos_radius_t[i][0]*sin(pos_phi_t[i][0]));
+    temp = (vel_theta_t[i][1] - vel_theta_t[i][0])/delta_t;
+    if(vel_theta_t[i][0] == 0.0000){ temp = temp/0.0000001; } else { temp = temp/vel_theta_t[i][0]; }
+    if( (pos_radius_t[i][0]*sin(pos_phi_t[i][0])) == 0.0000) { grad_v_theta_t[i][0] = temp/0.0000001; } else { grad_v_theta_t[i][0] = temp/(pos_radius_t[i][0]*sin(pos_phi_t[i][0])); }
     
-    temp = (vel_phi_t[i][1] - vel_phi_t[i][0])/(pos_phi_t[i][1] - pos_phi_t[i][0]); 
-    grad_v_phi_t[i][0] = temp/pos_radius_t[i][0];
+    temp = (vel_phi_t[i][1] - vel_phi_t[i][0])/delta_t;
+    if(vel_phi_t[i][0] == 0.0000){ temp = temp/0.0000001; } else { temp = temp/vel_phi_t[i][0]; } 
+    if(pos_radius_t[i][0] == 0.0000){ grad_v_phi_t[i][0] = temp/0.0000001; } else { grad_v_phi_t[i][0] = temp/pos_radius_t[i][0]; }
 
-    temp = (vel_radius_t[i][(t_max*n_t)-1] - vel_radius_t[i][(t_max*n_t)-2])/(pos_radius_t[i][(t_max*n_t)-1] - pos_radius_t[i][(t_max*n_t)-2]); 
+    temp = (vel_radius_t[i][(t_max*n_t)-1] - vel_radius_t[i][(t_max*n_t)-2])/( delta_t*( ((t_max*n_t)-2) - ((t_max*n_t)-1) ) );
+    if(vel_radius_t[i][(t_max*n_t)-1] == 0.0000){ temp = temp/0.0000001; } else { temp = temp/vel_radius_t[i][(t_max*n_t)-1]; }
     grad_v_radius_t[i][(t_max*n_t)-1] = temp;
     
-    temp = (vel_theta_t[i][(t_max*n_t)-1] - vel_theta_t[i][(t_max*n_t)-2])/(pos_theta_t[i][(t_max*n_t)-1] - pos_theta_t[i][(t_max*n_t)-2]); 
-    grad_v_theta_t[i][(t_max*n_t)-1] = temp/(pos_radius_t[i][(t_max*n_t)-1]*sin(pos_phi_t[i][(t_max*n_t)-1]));
+    temp = (vel_theta_t[i][(t_max*n_t)-1] - vel_theta_t[i][(t_max*n_t)-2])/( delta_t*( ((t_max*n_t)-2) - ((t_max*n_t)-1) ) );
+    if(vel_theta_t[i][(t_max*n_t)-1] == 0.0000){ temp = temp/0.0000001; } else { temp = temp/vel_theta_t[i][(t_max*n_t)-1]; }
+    if( (pos_radius_t[i][(t_max*n_t)-1]*sin(pos_phi_t[i][(t_max*n_t)-1])) == 0.0000 ){ grad_v_theta_t[i][(t_max*n_t)-1] = temp/0.0000001; } else { grad_v_theta_t[i][(t_max*n_t)-1] = temp/(pos_radius_t[i][(t_max*n_t)-1]*sin(pos_phi_t[i][(t_max*n_t)-1])); }
     
-    temp = (vel_phi_t[i][(t_max*n_t)-1] - vel_phi_t[i][(t_max*n_t)-2])/(pos_phi_t[i][(t_max*n_t)-1] - pos_phi_t[i][(t_max*n_t)-2]);
-    grad_v_phi_t[i][(t_max*n_t)-1] = temp/pos_radius_t[i][(t_max*n_t)-1];    
+    temp = (vel_phi_t[i][(t_max*n_t)-1] - vel_phi_t[i][(t_max*n_t)-2])/( delta_t*( ((t_max*n_t)-2) - ((t_max*n_t)-1) ) );
+    if(vel_phi_t[i][(t_max*n_t)-1] == 0.0000){ temp = temp/0.0000001; } else { temp = temp/vel_phi_t[i][(t_max*n_t)-1]; }
+    if(pos_radius_t[i][(t_max*n_t)-1] == 0.0000 ){grad_v_phi_t[i][(t_max*n_t)-1] = temp/0.0000001;} else {grad_v_phi_t[i][(t_max*n_t)-1] = temp/pos_radius_t[i][(t_max*n_t)-1];}
+       
   }
 
-  /*
-  //print testing
-  for(int t=1; t < (t_max*n_t)-1; t++)
+  //*************************
+  //Write the velocities,
+  //positions, and velocity gradient
+  //for each particle to separate files
+  //*************************
+  for(int i=0; i < particle_num; i++)
   {
-    printf("t = %d\n", t);
-    for(int i=0; i < particle_num; i++)
+    
+    char pos_file_name [17];
+    strcpy(pos_file_name,"pos_output_");
+
+    int length = snprintf(NULL, 0, "%d", i);
+    char* str = malloc( length + 1 );
+    snprintf(str, length + 1, "%d", i);
+
+    strcat(pos_file_name,str);
+    strcat(pos_file_name,".txt");
+   
+    FILE *f_pos = fopen(pos_file_name, "w");
+    if (f_pos == NULL)
     {
-      printf("i = %d\n", i);
-      printf("%f %f %f \n", vel_theta_t[i][t], vel_theta_t[i][t], vel_phi_t[i][t]);
+      printf("Error opening file!\n");
+      exit(1);
     }
+
+    char vel_file_name [17];
+    strcpy(vel_file_name,"vel_output_");
+
+    int length2 = snprintf(NULL, 0, "%d", i);
+    char* str2 = malloc( length2 + 1 );
+    snprintf(str2, length2 + 1, "%d", i);
+
+    strcat(vel_file_name,str2);
+    strcat(vel_file_name,".txt");
+   
+    FILE *f_vel = fopen(vel_file_name, "w");
+    if (f_vel == NULL)
+    {
+      printf("Error opening file!\n");
+      exit(1);
+    }
+
+    char grad_file_name [18];
+    strcpy(grad_file_name,"grad_output_");
+
+    int length3 = snprintf(NULL, 0, "%d", i);
+    char* str3 = malloc( length3 + 1 );
+    snprintf(str3, length3 + 1, "%d", i);
+
+    strcat(grad_file_name,str3);
+    strcat(grad_file_name,".txt");
+   
+    FILE *f_grad = fopen(grad_file_name, "w");
+    if (f_grad == NULL)
+    {
+      printf("Error opening file!\n");
+      exit(1);
+    }
+    
+    for(int t=0; t < (t_max*n_t)-1; t++)
+    {
+      fprintf(f_pos,"%f %.5f %.5f %.5f \n", delta_t*t, pos_radius_t[i][t], pos_theta_t[i][t], pos_phi_t[i][t]);
+      fprintf(f_vel,"%f %.5f %.5f %.5f \n", delta_t*t, vel_radius_t[i][t], vel_theta_t[i][t], vel_phi_t[i][t]);
+      fprintf(f_grad,"%f %.5f %.5f %.5f \n", delta_t*t, grad_v_radius_t[i][t], grad_v_theta_t[i][t], grad_v_phi_t[i][t]);
+    }
+    fclose(f_pos);
+    fclose(f_vel);
+    fclose(f_grad);
   }
-  */
-  
   
   return(0);
 }
